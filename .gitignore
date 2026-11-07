@@ -1,0 +1,12 @@
+# 本地生成的测试证书含私钥, 不入库; ./gen-cert.sh 可重新生成
+certs/
+*.key
+
+# 构建产物
+origin-test
+origin-test-linux-*
+*.exe
+
+# 运行期产物
+run/
+*.log
