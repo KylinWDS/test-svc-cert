@@ -115,16 +115,29 @@ status() {
   done; done
 }
 
+health_code() { # $1=transport http|tls|mtls, $2=port
+  local kind="$1" port="$2" url code
+  if [ "$kind" = "http" ]; then
+    url="http://127.0.0.1:${port}/healthz"
+  else
+    url="https://127.0.0.1:${port}/healthz"
+  fi
+  if [ "$kind" = "mtls" ]; then # 网关探活 mTLS 上游同样要出示客户端证书
+    code=$(curl -sk --cert "${CERTDIR}/client.pem" --key "${CERTDIR}/client.key" \
+      -o /dev/null -w '%{http_code}' "$url" 2>/dev/null)
+  else
+    code=$(curl -sk -o /dev/null -w '%{http_code}' "$url" 2>/dev/null)
+  fi
+  [ -n "$code" ] || code=000
+  echo "$code"
+}
+
 verify() {
   echo "== 逐一探活 /healthz(免 Host/认证; https 用 -k) =="
   for t in "${!TRANSPORT[@]}"; do for a in "${!AUTH[@]}"; do
-    local name port url extra
+    local name port code
     name=$(name_of "$t" "$a"); port=$(port_of "$t" "$a")
-    if   [ "${TRANSPORT[$t]}" = "http" ]; then url="http://127.0.0.1:${port}/healthz";             extra=()
-    elif [ "${TRANSPORT[$t]}" = "tls" ];  then url="https://127.0.0.1:${port}/healthz";             extra=()
-    else                                       url="https://127.0.0.1:${port}/healthz";             extra=(--cert "${CERTDIR}/client.pem" --key "${CERTDIR}/client.key")
-    fi
-    code=$(curl -sk "${extra[@]}" -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || echo 000)
+    code=$(health_code "${TRANSPORT[$t]}" "$port")
     printf "  %-12s 端口 %s  /healthz → %s\n" "$name" "$port" "$([ "$code" = 200 ] && echo UP || echo "DOWN($code)")"
   done; done
 }
