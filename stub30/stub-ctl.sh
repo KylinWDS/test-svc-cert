@@ -63,6 +63,8 @@ cmd_start() {
   if ! pgrep -f "$BIN_DIR/stubgrpc" >/dev/null 2>&1; then
     echo "[ctl] WARNING: stubgrpc is NOT running - last log lines ($LOG_DIR/stubgrpc.log):"
     tail -5 "$LOG_DIR/stubgrpc.log" 2>/dev/null || echo "(no stubgrpc.log found)"
+    echo "[ctl] port 40066 occupant (if any):"
+    ss -ltnp 'sport = :40066' 2>/dev/null || echo "(none listening now - occupancy was transient)"
   fi
 }
 

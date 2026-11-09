@@ -225,7 +225,7 @@ func main() {
 			inst.port = fmt.Sprintf("%d", t.basePort+i)
 			spec := auths[authKey]
 			go func() {
-				lis, err := net.Listen("tcp", ":"+inst.port)
+				lis, err := listenWithRetry(":"+inst.port, 3)
 				if err != nil {
 					errc <- err
 					return
@@ -259,7 +259,22 @@ func main() {
 	select {}
 }
 
-// stubBase 已移除：RegisterService 的 impl 传 nil（业务逻辑全在 MethodDesc.Handler）。
+// listenWithRetry: 绑定失败重试（瞬时占用如前一轮进程尚未完全释放时自愈）。
+func listenWithRetry(addr string, retries int) (net.Listener, error) {
+	var last error
+	for i := 0; i < retries; i++ {
+		if i > 0 {
+			log.Printf("[stubgrpc] %s bind failed (%v), retrying in 2s (%d/%d)...", addr, last, i, retries)
+			time.Sleep(2 * time.Second)
+		}
+		l, err := net.Listen("tcp", addr)
+		if err == nil {
+			return l, nil
+		}
+		last = err
+	}
+	return nil, last
+}
 
 // echoMethod: 一元方法 Handler —— 解码 EchoRequest 并转交业务回显（签名同 grpc-go 内部 methodHandler）。
 func echoMethod(t transport, spec *authSpec) func(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
