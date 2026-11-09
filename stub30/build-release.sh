@@ -48,15 +48,20 @@ done
 echo "==> 组装部署包"
 for arch in $ARCHS; do
   PKG="$STAGE/sa-gw-stub-30"
-  mkdir -p "$PKG/bin" "$PKG/certs/upstream" "$PKG/certs/certificates/demo-upstream-ca/1" "$PKG/systemd"
+  mkdir -p "$PKG/bin" "$PKG/certs/upstream" "$PKG/certs/certificates/demo-upstream-ca/1" "$PKG/certs/certificates/demo-gw-client-cert/1" "$PKG/tools" "$PKG/systemd"
   mv "$STAGE/origin-linux-$arch" "$PKG/bin/origin"
   mv "$STAGE/stubgrpc-linux-$arch" "$PKG/bin/stubgrpc"
   # 布局与编译契约一致：CERT_DIR/upstream/* + CERT_DIR/certificates/<id>/<v>/*
   cp "$CERT_SRC/upstream/server.chain.crt" "$PKG/certs/upstream/"
   cp "$CERT_SRC/upstream/server.key" "$PKG/certs/upstream/"
   cp "$CERT_SRC/certificates/demo-upstream-ca/1/ca.pem" "$PKG/certs/certificates/demo-upstream-ca/1/ca.pem"
+  # gateway client cert (presented by gateway on mTLS upstream; shipped for local verification)
+  cp "$CERT_SRC/certificates/demo-gw-client-cert/1/chain.pem" "$PKG/certs/certificates/demo-gw-client-cert/1/chain.pem"
+  cp "$CERT_SRC/certificates/demo-gw-client-cert/1/key.pem" "$PKG/certs/certificates/demo-gw-client-cert/1/key.pem"
   cp stub-30.sh "$PKG/stub-30.sh"
   cp stub-ctl.sh "$PKG/stub-ctl.sh"
+  # cert regeneration tool (needs openssl on the build machine; supports ALLOW_HOSTS domain binding)
+  cp certs/gen.sh "$PKG/tools/gen-certs.sh"
   cat > "$PKG/systemd/sa-gw-stub-30.service" <<UNIT
 [Unit]
 Description=sa-gateway 30-port test stub (origin-test x15 + stubgrpc x15)

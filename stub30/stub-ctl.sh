@@ -100,16 +100,19 @@ cmd_verify() {
     echo "  http-$auth    $p  /healthz -> $st"
     idx=$((idx + 1))
   done
-  # Business endpoints must return real values (with credentials)
-  if command -v wget >/dev/null 2>&1 || command -v curl >/dev/null 2>&1; then
-    if http_probe "http://127.0.0.1:40051/json" >/dev/null 2>&1; then
-      body=$(wget -qO- -T 3 --header 'Host: svc.example.com' --header 'Authorization: Basic c3ZjdXNlcjpzdmNwYXNz' http://127.0.0.1:40051/json 2>/dev/null || curl -s -m 3 -u svcuser:svcpass -H 'Host: svc.example.com' http://127.0.0.1:40051/json)
-      case "$body" in *order-alpha*) echo "  /json  40051  real-value -> UP";; *) echo "  /json  40051  real-value -> DOWN"; fail=$((fail + 1));; esac
-      body=$(wget -qO- -T 3 --header 'Host: svc.example.com' --header 'Authorization: Basic c3ZjdXNlcjpzdmNwYXNz' http://127.0.0.1:40051/echo/ctl-selfcheck 2>/dev/null || curl -s -m 3 -u svcuser:svcpass -H 'Host: svc.example.com' http://127.0.0.1:40051/echo/ctl-selfcheck)
-      case "$body" in *ctl-selfcheck*) echo "  /echo  40051  echo -> UP";; *) echo "  /echo  40051  echo -> DOWN"; fail=$((fail + 1));; esac
-      body=$(wget -qO- -T 3 --header 'Host: svc.example.com' --header 'Authorization: Basic c3ZjdXNlcjpzdmNwYXNz' http://127.0.0.1:40051/file 2>/dev/null || curl -s -m 3 -u svcuser:svcpass -H 'Host: svc.example.com' http://127.0.0.1:40051/file)
-      case "$body" in *order-alpha*) echo "  /file  40051  csv -> UP";; *) echo "  /file  40051  csv -> DOWN"; fail=$((fail + 1));; esac
-    fi
+  # Business endpoints must return real values (with credentials).
+  # Requires a client able to send custom headers: curl, or GNU wget (--header).
+  # busybox wget (alpine) cannot send Host/Authorization -> these checks are skipped.
+  if command -v curl >/dev/null 2>&1 || wget --help 2>&1 | grep -q -- '--header'; then
+    host_hdr=$(echo "$ALLOW_HOST" | cut -d, -f1)
+    body=$(curl -s -m 3 -u svcuser:svcpass -H "Host: $host_hdr" http://127.0.0.1:40051/json 2>/dev/null || wget -qO- -T 3 --header "Host: $host_hdr" --header 'Authorization: Basic c3ZjdXNlcjpzdmNwYXNz' http://127.0.0.1:40051/json 2>/dev/null)
+    case "$body" in *order-alpha*) echo "  /json  40051  real-value -> UP";; *) echo "  /json  40051  real-value -> DOWN"; fail=$((fail + 1));; esac
+    body=$(curl -s -m 3 -u svcuser:svcpass -H "Host: $host_hdr" http://127.0.0.1:40051/echo/ctl-selfcheck 2>/dev/null || wget -qO- -T 3 --header "Host: $host_hdr" --header 'Authorization: Basic c3ZjdXNlcjpzdmNwYXNz' http://127.0.0.1:40051/echo/ctl-selfcheck 2>/dev/null)
+    case "$body" in *ctl-selfcheck*) echo "  /echo  40051  echo -> UP";; *) echo "  /echo  40051  echo -> DOWN"; fail=$((fail + 1));; esac
+    body=$(curl -s -m 3 -u svcuser:svcpass -H "Host: $host_hdr" http://127.0.0.1:40051/file 2>/dev/null || wget -qO- -T 3 --header "Host: $host_hdr" --header 'Authorization: Basic c3ZjdXNlcjpzdmNwYXNz' http://127.0.0.1:40051/file 2>/dev/null)
+    case "$body" in *order-alpha*) echo "  /file  40051  csv -> UP";; *) echo "  /file  40051  csv -> DOWN"; fail=$((fail + 1));; esac
+  else
+    echo "  business endpoints: SKIP (client cannot send custom headers; use curl or GNU wget)"
   fi
   # gRPC family: process liveness (stubgrpc binds all 15 ports; real calls need grpcurl)
   if pgrep -f "$BIN_DIR/stubgrpc" >/dev/null 2>&1; then

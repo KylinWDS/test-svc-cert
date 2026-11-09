@@ -120,6 +120,19 @@ cd stub30/certs && sh gen.sh        # 输出到 certs/generated/（gitignore，�
 | `demo-gw-client-cert/1/` | mTLS 回源时网关出示的客户端证书 |
 | `upstream/server.chain.crt + key` | 测试桩服务端证书（SAN 含 demo-upstream/demo-stub/svc.example.com） |
 
+**自定义域名绑定**（重新生成并指定绑定）：
+
+```bash
+cd stub30
+ALLOW_HOSTS="api.test.cn my.api.cn" sh certs/gen.sh   # 多域名全部写入证书 SAN
+./build-release.sh                                     # 重新打包
+# 目标机启动（-allow-host 支持逗号分隔多域名）：
+ALLOW_HOST='api.test.cn,my.api.cn' ./stub-ctl.sh start
+# 验证（TLS 严格校验 SAN）：
+curl --cacert <部署包解压>/certs/certificates/demo-upstream-ca/1/ca.pem \
+  --resolve api.test.cn:40056:127.0.0.1 -u svcuser:svcpass https://api.test.cn:40056/json
+```
+
 **安全约定**：`*.key` 与 `certs/generated/` 已被 `.gitignore` 忽略——私钥只在本地与
 部署包中，绝不入库。轮换证书：删除 `certs/generated/.done` 后重跑 `gen.sh`。
 
