@@ -131,7 +131,8 @@ Contents: bin/origin + bin/stubgrpc (Go static build, linux-$arch),
   - credentials: basic=svcuser/svcpass  bearer=mytoken  jwt=HS256 mysecret
             apikey=X-Api-Key:myapikey  custom=X-Edge-Auth:edge1
 INST
-  tar czf "$DIST/sa-gw-stub-30-linux-$arch.tar.gz" -C "$STAGE" sa-gw-stub-30
+  # COPYFILE_DISABLE: suppress macOS bsdtar AppleDouble/xattr headers (Debian tar warns on them)
+  COPYFILE_DISABLE=1 tar czf "$DIST/sa-gw-stub-30-linux-$arch.tar.gz" --no-xattrs -C "$STAGE" sa-gw-stub-30 2>/dev/null || COPYFILE_DISABLE=1 tar czf "$DIST/sa-gw-stub-30-linux-$arch.tar.gz" -C "$STAGE" sa-gw-stub-30
   echo "  -> dist/sa-gw-stub-30-linux-$arch.tar.gz"
 done
 

@@ -37,8 +37,8 @@ cd stub30 && sh certs/gen.sh && ./build-release.sh
 # 目标机（任意 Linux amd64/arm64，Debian/Ubuntu/CentOS/RHEL/Alpine 均可）
 scp dist/sa-gw-stub-30-linux-<arch>.tar.gz user@<server>:/tmp/
 ssh user@<server>
-tar xzf /tmp/sa-gw-stub-30-linux-<arch>.tar.gz -C /opt/     # → /opt/sa-gw-stub-30/
-cd /opt/sa-gw-stub-30 && ./stub-ctl.sh start                # 一键启动 30 端口
+tar xzf /tmp/sa-gw-stub-30-linux-<arch>.tar.gz -C /opt/     # 解压到任意目录均可
+cd /opt/sa-gw-stub-30 && ./stub-ctl.sh start                # 一键启动（脚本自动探测 bin/certs）
 ./stub-ctl.sh verify                                        # 全部 UP 即成功
 ```
 

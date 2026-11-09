@@ -11,11 +11,21 @@
 # Env overrides (defaults match /opt/sa-gw-stub-30 layout):
 #   BIN_DIR / CERT_DIR / LOG_DIR / ALLOW_HOST
 set -u
-BIN_DIR="${BIN_DIR:-/opt/sa-gw-stub-30/bin}"
-CERT_DIR="${CERT_DIR:-/opt/sa-gw-stub-30/certs}"
-LOG_DIR="${LOG_DIR:-/var/log/sa-gw-stub-30}"
-ALLOW_HOST="${ALLOW_HOST:-svc.example.com}"
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Path auto-detection: explicit env > extracted dir (./bin ./certs) > /opt default.
+# Extract anywhere and run ./stub-ctl.sh start -- no /opt requirement.
+BIN_DIR="${BIN_DIR:-}"
+CERT_DIR="${CERT_DIR:-}"
+if [ -z "$BIN_DIR" ]; then
+  if [ -x "$SELF_DIR/bin/origin" ]; then BIN_DIR="$SELF_DIR/bin"; else BIN_DIR="/opt/sa-gw-stub-30/bin"; fi
+fi
+if [ -z "$CERT_DIR" ]; then
+  if [ -f "$SELF_DIR/certs/upstream/server.chain.crt" ]; then CERT_DIR="$SELF_DIR/certs"; else CERT_DIR="/opt/sa-gw-stub-30/certs"; fi
+fi
+if [ -z "${LOG_DIR:-}" ]; then
+  if [ -w "$SELF_DIR" ] || [ "$(id -u)" = 0 ]; then LOG_DIR="$SELF_DIR/logs"; else LOG_DIR="/var/log/sa-gw-stub-30"; fi
+fi
+ALLOW_HOST="${ALLOW_HOST:-svc.example.com}"
 PIDFILE="$LOG_DIR/stub-30.pid"
 AUTH_KEYS="basic bearer jwt apikey custom"
 
@@ -39,7 +49,9 @@ cmd_start() {
     echo "[ctl] already running (pid $(cat "$PIDFILE" 2>/dev/null || echo '?')); use status / stop"
     return 0
   fi
-  [ -x "$BIN_DIR/origin" ] && [ -x "$BIN_DIR/stubgrpc" ] || { echo "[ctl] missing binaries: $BIN_DIR/{origin,stubgrpc}"; return 1; }
+  [ -x "$BIN_DIR/origin" ] && [ -x "$BIN_DIR/stubgrpc" ] || { echo "[ctl] missing binaries in: $BIN_DIR"
+    echo "[ctl] hint: run from the extracted sa-gw-stub-30/ directory, or set BIN_DIR=<path> explicitly"
+    return 1; }
   [ -f "$CERT_DIR/upstream/server.chain.crt" ] || { echo "[ctl] missing cert: $CERT_DIR/upstream/server.chain.crt"; return 1; }
   mkdir -p "$LOG_DIR"
   nohup env BIN_DIR="$BIN_DIR" CERT_DIR="$CERT_DIR" LOG_DIR="$LOG_DIR" ALLOW_HOST="$ALLOW_HOST" \
