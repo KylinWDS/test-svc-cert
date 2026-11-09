@@ -1,0 +1,35 @@
+// stub.proto: 演示网关 30 端口测试桩的 gRPC 消息契约。
+// 15 个变体服务（{grpc|grpcs|grpcmtls}.{basic|bearer|jwt|apikey|custom}.Stub）
+// 各自 import 本文件的 Echo 消息（变体 .proto 由 protos/gen-variants.sh 生成）。
+syntax = "proto3";
+
+package stub;
+
+option go_package = "sa-gw-stub/pb";
+
+// EchoRequest: 客户端发送的数据
+message EchoRequest {
+  string data = 1;
+}
+
+// EchoResponse: 联调回显（与 origin-test HTTP 版 view 语义对齐）
+message EchoResponse {
+  // data: 原样回传客户端 data
+  string data = 1;
+  // server: 后端标识（传输形态:端口 @容器）
+  string server = 2;
+  // timestamp: 服务端毫秒时间戳
+  int64 timestamp = 3;
+  // authPassed: 本次通过的业务认证（basic/bearer/jwt/api-key/custom-header）
+  repeated string auth_passed = 4;
+  // host: 网关透传的 :authority
+  string host = 5;
+  // scheme: grpc | grpcs
+  string scheme = 6;
+  // clientDN: mTLS 网关客户端证书 Subject（未要求/未提供为空）
+  string client_dn = 7;
+  // fwdFor: 网关注入 X-Forwarded-For
+  string fwd_for = 8;
+  // fwdProto: 网关注入 X-Forwarded-Proto
+  string fwd_proto = 9;
+}

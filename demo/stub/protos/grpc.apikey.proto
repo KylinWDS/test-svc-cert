@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package grpc.apikey;
+
+option go_package = "sa-gw-stub/pb";
+
+import "stub.proto";
+
+// grpc.apikey.Stub: grpc 传输 + apikey 认证 变体（网关路由前缀 /grpc.apikey.Stub/ → 对应上游）。
+service Stub {
+  rpc Echo(stub.EchoRequest) returns (stub.EchoResponse);
+}

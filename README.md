@@ -9,18 +9,21 @@
 - 仓库自包含、开箱即用：**目标机不需要 Docker、openssl、Go、Python**——测试桩为
   `CGO_ENABLED=0` 纯静态 Go 二进制（不依赖 glibc/musl），证书为 PEM 文件（本机生成
   打包），管理与验证仅依赖 `sh` + `wget`（或 curl）。
-- 仓库分两部分：
-  - **`stub30/`（当前交付物，推荐）**：30 端口测试桩——{http, tls, mtls} × {grpc,
-    grpcs, grpcmtls} 六种传输形态 × 5 种认证，一键启停 `stub-ctl.sh`。
+- 仓库分三部分：
+  - **`stub30/`（测试桩交付物）**：30 端口测试桩——{http, tls, mtls} × {grpc,
+    grpcs, grpcmtls} 六种传输形态 × 5 种认证，一键启停 `stub-ctl.sh`；**无 Docker
+    依赖**（静态二进制部署）。
+  - **`demo/`（网关演示环境，本机测试用）**：Envoy 网关（真实编译链 bootstrap 烧入
+    envoyproxy/envoy:v1.37.1 镜像）+ 演示上游 + `verify-30.sh`（155 项断言互转验证）。
+    需 Docker，仅用于本机/联调机做端到端测试——目标服务器部署测试桩不需要它。
   - **根目录遗留 v1**（`main.go` + `deploy-15.sh`，15 端口单实例平铺）：早期版本，
     保留向后兼容，详见 `docs/origin-test-legacy.md`。
 
 > 网关侧（Envoy）由 sa-gateway 项目与节点 pilot 负责；本仓库只交付测试桩与网关配置
 > 样例，不承载网关运行时。
 >
-> **另**：sa-gateway 项目侧的本机演示环境（docker-compose + 演示上游 + verify-30.sh
-> 155 断言网关互转验证）已归档至本仓库 `docs/demo-environment-legacy.tar.gz`
-> （解包后 `docker compose up -d --build` 可在装有 Docker 的机器复现演示）。
+> **另**：sa-gateway 项目侧的本机演示环境已迁入本仓库 `demo/` 目录（Envoy 网关 +
+> 演示上游 + verify-30.sh），使用方式见 §9。
 
 ---
 
@@ -188,7 +191,28 @@ stub30/
 
 ---
 
-## 9. 历史版本
+## 9. 网关演示环境（demo/，本机端到端测试）
+
+`demo/` 是完整的 Envoy 网关演示/测试环境：真实编译链 bootstrap → 真实 Envoy v1.37.1 →
+演示上游 + 30 端口测试桩，**4 入口 × 30 上游 = 120 条互转链路**全量可验证
+（`verify-30.sh`，155 项断言：直连基线/网关转发/互转矩阵/业务端点真实值/认证正负向/mTLS 证书链）。
+
+```bash
+# ① 生成网关配置（需 sa-gateway 项目构建环境，JDK17 + Maven）
+mvn -f <sa-gateway>/pom.xml -pl sa-gateway-api,sa-gateway-domain test \
+  -Dtest=EnvoyDemoConfigDumpTest        # 产物写入 demo/output/bootstrap.docker.json
+
+# ② 构建并启动
+cd demo && docker compose up -d --build
+
+# ③ 全量验证
+./verify-30.sh        # PASS=155 FAIL=0
+```
+
+说明：`demo/stub/` 是测试桩源码的**构建快照**（演示镜像构建输入）；测试桩的权威源码
+与交付物在 `stub30/`。演示环境需 Docker，仅本机/联调机使用——服务器部署测试桩走 §1。
+
+## 10. 历史版本
 
 根目录遗留 v1（单实例 origin-test + `deploy-15.sh` 15 端口平铺、`gen-cert.sh`、原
 README）已归档至 `docs/origin-test-legacy.md`，仅供向后参考；新部署一律使用 `stub30/`。

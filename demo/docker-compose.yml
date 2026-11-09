@@ -1,0 +1,115 @@
+# sa-gateway 演示环境：证书生成 → 四合一上游 → Envoy 网关（真实编译链产物）
+#
+# 使用顺序（详见 README.md）：
+#   1) mvn -s <settings> -pl sa-gateway-api,sa-gateway-domain test -Dtest=EnvoyDemoConfigDumpTest
+#      （生成 demo/output/bootstrap.docker.json，导出器同时写入 target/envoy-demo/）
+#   2) docker compose up -d --build
+#   3) 按 README「端到端验证」测试流量转发
+#
+# 全部产物经镜像 COPY 注入（无宿主机 bind mount），任何装有 Docker 的环境可复现。
+name: sa-gateway-demo
+
+services:
+  # 1) 证书生成（一次性任务，产出编译契约要求的证书文件布局到 demo-certs 卷）
+  certs:
+    build: ./certs
+    volumes:
+      - demo-certs:/certs
+
+  # 2) 四合一演示上游：HTTP :8080 / HTTPS :8443 / gRPC :9090 / gRPCS :9091
+  upstream:
+    build: ./upstream
+    container_name: demo-upstream
+    depends_on:
+      certs:
+        condition: service_completed_successfully
+    environment:
+      HTTP_PORT: "8080"
+      HTTPS_PORT: "8443"
+      GRPC_PORT: "9090"
+      GRPCS_PORT: "9091"
+      CERT_DIR: "/certs"
+    volumes:
+      - demo-certs:/certs:ro
+    ports:
+      - "18080:8080"    # 直连基线：HTTP 页面
+      - "18443:8443"    # 直连基线：HTTPS 页面（自签，curl -k）
+      - "19090:9090"    # 直连基线：明文 gRPC
+      - "19091:9091"    # 直连基线：TLS gRPC
+
+  # 3) Envoy 网关：镜像内已烧入真实编译链生成的 bootstrap（见 demo/envoy/Dockerfile）
+  envoy:
+    build:
+      context: .
+      dockerfile: envoy/Dockerfile
+    container_name: demo-envoy
+    depends_on:
+      - upstream
+      - stub
+    command: ["-c", "/etc/envoy/envoy.json", "--log-level", "info"]
+    volumes:
+      # 证书卷挂到 {{PILOT_RELEASE_DIR}} = /etc/envoy/release（编译契约路径 certificates/<id>/<v>/*）
+      - demo-certs:/etc/envoy/release:ro
+    ports:
+      - "10000:10000"  # 入口 HTTP（h1/h2 协商）——页面 + gRPC + 30 端口测试桩全覆盖
+      - "10001:10001"  # 入口 HTTP（codec HTTP1，h1 强制）——互转矩阵
+      - "10002:10002"  # 入口 HTTP（h2 可用）——互转矩阵
+      - "10443:10443"  # 入口 HTTPS（网关证书 demo-gw-cert）
+
+  # 3.5) 30 端口测试桩（移植自 test-svc-cert/origin-test + 新增 gRPC 家族）
+  #      HTTP 家族 40051-40065：{http,tls,mtls} × {basic,bearer,jwt,apikey,custom}
+  #      gRPC 家族 40066-40080：{grpc,grpcs,grpcmtls} × 5 认证
+  stub:
+    build: ./stub
+    container_name: demo-stub
+    depends_on:
+      certs:
+        condition: service_completed_successfully
+    volumes:
+      - demo-certs:/certs:ro
+    ports:
+      - "40051:40051"
+      - "40052:40052"
+      - "40053:40053"
+      - "40054:40054"
+      - "40055:40055"
+      - "40056:40056"
+      - "40057:40057"
+      - "40058:40058"
+      - "40059:40059"
+      - "40060:40060"
+      - "40061:40061"
+      - "40062:40062"
+      - "40063:40063"
+      - "40064:40064"
+      - "40065:40065"
+      - "40066:40066"
+      - "40067:40067"
+      - "40068:40068"
+      - "40069:40069"
+      - "40070:40070"
+      - "40071:40071"
+      - "40072:40072"
+      - "40073:40073"
+      - "40074:40074"
+      - "40075:40075"
+      - "40076:40076"
+      - "40077:40077"
+      - "40078:40078"
+      - "40079:40079"
+      - "40080:40080"
+
+  # 4) 演示客户端（stub.proto + 15 个变体 proto 已烧入镜像，无需上游 reflection）：
+  #    docker compose run --rm grpcurl -import-path /protos -proto grpc.basic.proto -plaintext -d '{"data":"hi"}' demo-envoy:10000 grpc.basic.Stub/Echo
+  #    HTTPS 入口：-insecure -servername localhost ... host.docker.internal:10443
+  grpcurl:
+    build:
+      context: .
+      dockerfile: grpcurl/Dockerfile
+    profiles: ["client"]
+    entrypoint: ["grpcurl"]
+    volumes:
+      - demo-certs:/certs:ro   # mTLS 直连测试桩时出示网关客户端证书
+
+volumes:
+  demo-certs:

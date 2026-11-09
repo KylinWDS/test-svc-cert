@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package demo;
+
+option go_package = "demo-upstream/pb";
+
+// EchoRequest: 客户端发送的数据
+message EchoRequest {
+  string data = 1;
+}
+
+// EchoResponse: 网关 demo 上游的回显
+message EchoResponse {
+  // data: 原样回传客户端 data
+  string data = 1;
+  // server: 服务标识（含协议与端口，便于确认流量路径）
+  string server = 2;
+  // timestamp: 服务端毫秒时间戳
+  int64 timestamp = 3;
+}
+
+// DemoService: 明文 gRPC 服务（网关 GRPC 上游回源目标，:9090）
+service DemoService {
+  rpc Echo(EchoRequest) returns (EchoResponse);
+}
+
+// SecureDemoService: TLS gRPC 服务（网关 GRPCS 上游回源目标，:9091）
+service SecureDemoService {
+  rpc Echo(EchoRequest) returns (EchoResponse);
+}
