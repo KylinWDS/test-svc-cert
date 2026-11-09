@@ -168,7 +168,6 @@ stub30/
 ├── stub-30.sh                # 30 端口启动器（BIN_DIR/CERT_DIR/LOG_DIR/ALLOW_HOST 参数化）
 ├── stub-ctl.sh               # 一键管理 start/stop/status/verify（POSIX sh）
 ├── certs/gen.sh              # 证书生成（编译契约布局 + 幂等）
-├── Dockerfile                # 可选容器构建（goproxy.cn + BuildKit 缓存挂载）
 ├── build-release.sh          # 部署包构建器（交叉编译 amd64/arm64 + systemd + 证书）
 ├── go.mod / go.sum           # Go 依赖（grpc/protobuf，go.sum 锁定）
 └── dist/                     # 部署包产物（gitignore：含私钥）
