@@ -97,10 +97,75 @@ gRPC 家族 `Echo` 返回真实值：data 回显 + 后端标识 + `auth_passed` 
 | `./stub-ctl.sh start` | 幂等后台拉起 30 端口（检查二进制/证书、写 pidfile、输出健康表） |
 | `./stub-ctl.sh stop` | 精确停止（pidfile + pkill 兜底） |
 | `./stub-ctl.sh status` | 进程存活（15 origin + 1 stubgrpc）+ HTTP 家族 `/healthz` 探测 |
+| `./stub-ctl.sh health` | 健康检查一句话结果（PASS/FAIL，退出码 0/1——适合巡检脚本） |
+| `./stub-ctl.sh info` | 部署信息（二进制/放行域/证书 SAN/端口矩阵/凭据/端点清单） |
 | `./stub-ctl.sh verify` | 语义探活：探针 200 + **业务端点真实值自检**（/json /echo /file）+ gRPC 进程 |
 
 依赖：`sh` + `wget`（或 curl）——Debian/Ubuntu/CentOS/RHEL/Alpine 默认满足，无
 systemd/bash/python 依赖。systemd 环境可用 `systemd/sa-gw-stub-30.service`。
+
+---
+
+
+### 测试命令手册（curl / grpcurl，直连与经网关同构）
+
+> 端口-认证配对：`40066+0..4 = grpc.{basic,bearer,jwt,apikey,custom}`，`40071+0..4 = grpcs.*`，`40076+0..4 = grpcmtls.*`。放行域默认 `svc.example.com`（自定义见 `stub-ctl.sh info`）。
+
+**HTTP 家族（basic 凭据示例）**
+
+```bash
+curl -u svcuser:svcpass -H 'Host: svc.example.com' http://127.0.0.1:40051/            # 状态页（浏览器回显）
+curl -u svcuser:svcpass -H 'Host: svc.example.com' http://127.0.0.1:40051/info        # 请求/透传信息 JSON
+curl -u svcuser:svcpass -H 'Host: svc.example.com' http://127.0.0.1:40051/json        # 业务样例 JSON
+curl -u svcuser:svcpass -H 'Host: svc.example.com' http://127.0.0.1:40051/echo/hello  # 回显
+curl -u svcuser:svcpass -H 'Host: svc.example.com' -OJ http://127.0.0.1:40051/file    # CSV 文件下载
+curl http://127.0.0.1:40051/healthz                                                   # 免认证探活 → ok
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:40051/json                  # 负向：无凭据 → 401
+```
+
+**TLS 单向（严格校验证书链与 SAN）**
+
+```bash
+curl --cacert /opt/sa-gw-stub-30/certs/certificates/demo-upstream-ca/1/ca.pem \
+  --resolve svc.example.com:40056:127.0.0.1 -u svcuser:svcpass \
+  https://svc.example.com:40056/json
+```
+
+**gRPC 家族（grpcurl，静态二进制见 verify-tools/）**
+
+```bash
+G='grpcurl -import-path protos -max-time 8'
+# grpc 明文（basic）
+$G -proto grpc.basic.proto -plaintext -H 'authorization: Basic c3ZjdXNlcjpzdmNwYXNz' \
+  -d '{"data":"hi"}' 127.0.0.1:40066 grpc.basic.Stub/Echo
+# grpc 明文（bearer；JWT 由 gen-jwt.py 签发：python3 gen-jwt.py mysecret，可选 Python）
+JWT=$(python3 gen-jwt.py mysecret)
+$G -proto grpc.bearer.proto -plaintext -H "authorization: Bearer $JWT" \
+  -d '{"data":"hi"}' 127.0.0.1:40067 grpc.bearer.Stub/Echo
+# grpcs TLS 单向（apikey）
+$G -proto grpcs.apikey.proto -insecure -H 'x-api-key: myapikey' \
+  -d '{"data":"hi"}' 127.0.0.1:40071 grpcs.apikey.Stub/Echo
+# grpcmtls 双向（网关客户端证书，部署包 certs/ 或 certs/generated/）
+$G -proto grpcmtls.custom.proto -insecure \
+  -cert certs/generated/certificates/demo-gw-client-cert/1/chain.pem \
+  -key  certs/generated/certificates/demo-gw-client-cert/1/key.pem \
+  -H 'x-edge-auth: edge1' -d '{"data":"hi"}' 127.0.0.1:40076 grpcmtls.custom.Stub/Echo
+# 负向：无凭据 → Unauthenticated
+$G -proto grpc.basic.proto -plaintext -d '{"data":"x"}' 127.0.0.1:40066 grpc.basic.Stub/Echo
+```
+
+**经网关转发（网关 :10000/:10001/:10002/:10443；桩侧命令不变，仅替换地址与路径前缀）**
+
+```bash
+# HTTP 家族（网关重写 Host=svc.example.com；rewrite.path=/ 后端收到干净路径）
+curl -u svcuser:svcpass http://<gateway>:10000/stub/http-basic/json
+curl -u svcuser:svcpass http://<gateway>:10001/stub/mtls-basic/echo/gateway-h1
+curl --cacert <ca.pem> -u svcuser:svcpass https://<gateway>:10443/stub/tls-bearer/echo/gw-tls
+# gRPC 家族
+$G -proto grpcs.jwt.proto -plaintext -H 'authorization: Bearer mytoken' \
+  -d '{"data":"hi"}' <gateway>:10002 grpcs.jwt.Stub/Echo
+```
+
 
 ---
 

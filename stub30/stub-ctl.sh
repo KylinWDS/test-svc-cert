@@ -1,5 +1,5 @@
 #!/bin/sh
-# stub-ctl.sh - 30-port test stub management (start / stop / status / verify)
+# stub-ctl.sh - 30-port test stub management (start / stop / status / health / info / verify)
 # Pure POSIX sh (no bash needed) - works on Debian/Ubuntu/Alpine/busybox.
 # Semantics aligned with test-svc-cert/deploy-15.sh, extended to 30 ports.
 #
@@ -88,6 +88,63 @@ cmd_status() {
   return 1
 }
 
+
+cmd_info() {
+  echo "== stub deployment info =="
+  echo "  binary dir   : $BIN_DIR"
+  echo "  origin       : $(ls -l "$BIN_DIR/origin" 2>/dev/null | awk '{print $5" bytes"}')"
+  echo "  stubgrpc     : $(ls -l "$BIN_DIR/stubgrpc" 2>/dev/null | awk '{print $5" bytes"}')"
+  echo "  state        : $(is_running && echo running || echo stopped)"
+  echo "  allow hosts  : $ALLOW_HOST"
+  echo "  cert dir     : $CERT_DIR"
+  echo "  server cert  : $CERT_DIR/upstream/server.chain.crt"
+  if command -v openssl >/dev/null 2>&1; then
+    openssl x509 -in "$CERT_DIR/upstream/server.chain.crt" -noout -subject -ext subjectAltName 2>/dev/null | sed 's/^/    /'
+  fi
+  echo "  gateway CA   : $CERT_DIR/certificates/demo-upstream-ca/1/ca.pem"
+  echo "  gw client cert: $CERT_DIR/certificates/demo-gw-client-cert/1/chain.pem"
+  echo "  log dir      : $LOG_DIR"
+  echo "== port matrix (5 auth variants per family) =="
+  echo "  http  40051-40055  | tls  40056-40060  | mtls  40061-40065"
+  echo "  grpc  40066-40070  | grpcs 40071-40075 | grpcmtls 40076-40080"
+  echo "== credentials =="
+  echo "  basic=svcuser/svcpass  bearer=mytoken  jwt=HS256 mysecret"
+  echo "  apikey=X-Api-Key:myapikey  custom=X-Edge-Auth:edge1"
+  echo "== business endpoints (auth required; /healthz auth-free) =="
+  echo "  GET /            HTML status page"
+  echo "  GET /info        request/forwarding info JSON"
+  echo "  GET /json        structured sample data"
+  echo "  GET /echo/<val>  path+query echo JSON"
+  echo "  GET /file        CSV sample (attachment download)"
+}
+
+cmd_health() {
+  fail=0
+  if ! is_running; then
+    echo "HEALTH: FAIL (processes not running)"
+    return 1
+  fi
+  idx=0
+  for auth in $AUTH_KEYS; do
+    p=$((40051 + idx))
+    code=$(http_probe "http://127.0.0.1:$p/healthz")
+    if [ "$code" != 200 ]; then
+      echo "HEALTH: FAIL (http-$auth :$p /healthz -> $code)"
+      fail=1
+    fi
+    idx=$((idx + 1))
+  done
+  if ! pgrep -f "$BIN_DIR/stubgrpc" >/dev/null 2>&1; then
+    echo "HEALTH: FAIL (stubgrpc process missing)"
+    fail=1
+  fi
+  if [ "$fail" = 0 ]; then
+    echo "HEALTH: PASS (15/15 http probes 200, grpc family alive)"
+    return 0
+  fi
+  return 1
+}
+
 cmd_verify() {
   echo "== semantic probes =="
   fail=0
@@ -133,6 +190,8 @@ case "${1:-}" in
   start)  cmd_start ;;
   stop)   cmd_stop ;;
   status) cmd_status ;;
+  health) cmd_health ;;
+  info)   cmd_info ;;
   verify) cmd_verify ;;
-  *) echo "usage: $0 {start|stop|status|verify}"; exit 1 ;;
+  *) echo "usage: $0 {start|stop|status|health|info|verify}"; exit 1 ;;
 esac
