@@ -58,8 +58,8 @@ for auth in basic bearer jwt apikey custom; do
   i=$((i + 1))
 done
 
-# ④ gRPC family: PORT_BASE+15..+29 (in-process 15 listeners; GRPC_PORT_BASE aligned with PORT_BASE)
+# ④ gRPC family: PORT_BASE+15..+29 (5 auths) + +30..+32 (auth-free none); GRPC_PORT_BASE aligned with PORT_BASE
 GRPC_PORT_BASE=$((PORT_BASE + 15)) "$STUBGRPC" >"$LOG_DIR/stubgrpc.log" 2>&1 &
-echo "[stub] grpc family   :$((PORT_BASE + 15))-$((PORT_BASE + 29)) (pid $!)"
+echo "[stub] grpc family   :$((PORT_BASE + 15))-$((PORT_BASE + 32)) incl. 3 auth-free none (pid $!)"
 echo "[stub] 全部 30 端口已拉起，日志见 $LOG_DIR/"
 wait

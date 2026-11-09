@@ -47,22 +47,22 @@ cd /opt/sa-gw-stub-30 && ./stub-ctl.sh start      # 一键启动 30 端口
 
 ## 2. 测试桩端口与能力
 
-### 2.1 端口矩阵（30 个，基址默认 62051/PORT_BASE 可平移）
+### 2.1 端口矩阵（33 个 = 30 认证变体 + 3 免认证 none；基址默认 62051/PORT_BASE 可平移）
 
-| | basic | bearer | jwt | apikey | custom |
-|---|---|---|---|---|---|
-| **http**（明文） | +0 | +1 | +2 | +3 | +4 |
-| **tls**（单向 TLS） | +5 | +6 | +7 | +8 | +9 |
-| **mtls**（双向 mTLS） | +10 | +11 | +12 | +13 | +14 |
-| **grpc**（明文 gRPC） | +15 | +16 | +17 | +18 | +19 |
-| **grpcs**（TLS gRPC） | +20 | +21 | +22 | +23 | +24 |
-| **grpcmtls**（mTLS gRPC） | +25 | +26 | +27 | +28 | +29 |
+| | basic | bearer | jwt | apikey | custom | **none（免认证透传）** |
+|---|---|---|---|---|---|---|
+| **http**（明文） | +0 | +1 | +2 | +3 | +4 | —（用 `/healthz`） |
+| **tls**（单向 TLS） | +5 | +6 | +7 | +8 | +9 | —（用 `/healthz`） |
+| **mtls**（双向 mTLS） | +10 | +11 | +12 | +13 | +14 | —（用 `/healthz`） |
+| **grpc**（明文 gRPC） | +15 | +16 | +17 | +18 | +19 | **+30** |
+| **grpcs**（TLS gRPC） | +20 | +21 | +22 | +23 | +24 | **+31** |
+| **grpcmtls**（mTLS gRPC） | +25 | +26 | +27 | +28 | +29 | **+32** |
 
-默认基址 62051（段 62051-62080，在系统 ephemeral 出站源端口范围 32768-60999 之外——
+默认基址 62051（段 62051-62083，在系统 ephemeral 出站源端口范围 32768-60999 之外——
 实测该范围与低段端口会冲突，见 §5 端口段偏移）。
 
 - HTTP 家族：每实例校验 Host（放行域）、业务认证；`/healthz` 等探针免认证。
-- gRPC 家族：`stubgrpc` 单进程 15 listeners；认证读 gRPC metadata；JWT 为 HS256 验签 +
+- gRPC 家族：`stubgrpc` 单进程 18 listeners（15 认证变体 + 3 免认证 none）；认证读 gRPC metadata；JWT 为 HS256 验签 +
   exp；失败返回 `codes.Unauthenticated`；grpcmtls 强制校验网关客户端证书并回显 Subject。
 
 ### 2.2 业务端点（HTTP 家族，均需业务认证，返回真实值、浏览器可回显）
@@ -173,6 +173,29 @@ $G -proto grpcmtls.custom.proto -insecure \
 $G -proto grpc.basic.proto -plaintext -d '{"data":"x"}' 127.0.0.1:62066 grpc.basic.Stub/Echo
 ```
 
+**免认证透传（none 变体，无需任何业务凭据）**
+
+> gRPC 家族段尾 3 个免认证 Echo（段内 +30/+31/+32）：不校验业务凭据，`auth_passed` 回显
+> `none(transparent)`——纯协议/传输验证（网关 h1↔h2 互转、TLS 终止、mTLS 证书链）用；
+> `grpcmtls.none` 仍强制 mTLS 客户端证书（传输层认证保留）并回显 `clientDn`。HTTP 家族
+> 免认证探活用 `/healthz`（仅返回 `ok`，不回显业务数据）。注：本变体为新增能力（容器
+> 实测通过），10.66.69.212 当前部署包为 30 端口版——重新部署最新包后生效（62081-62083）。
+
+```bash
+G='grpcurl -import-path protos -max-time 8'
+# grpc.none 明文（无需凭据）
+$G -proto grpc.none.proto -plaintext -d '{"data":"no-auth"}' 127.0.0.1:62081 grpc.none.Stub/Echo
+# grpcs.none TLS 单向（无需凭据）
+$G -proto grpcs.none.proto -insecure -d '{"data":"no-auth"}' 127.0.0.1:62082 grpcs.none.Stub/Echo
+# grpcmtls.none mTLS（传输层仍需网关客户端证书；业务凭据免）
+$G -proto grpcmtls.none.proto -insecure \
+  -cert certs/generated/certificates/demo-gw-client-cert/1/chain.pem \
+  -key  certs/generated/certificates/demo-gw-client-cert/1/key.pem \
+  -d '{"data":"no-auth"}' 127.0.0.1:62083 grpcmtls.none.Stub/Echo
+```
+
+---
+
 **手工 gRPC 帧（无 grpcurl 时用 curl 直发）**
 
 ```bash
@@ -241,7 +264,7 @@ ALLOW_HOSTS="api.test.cn my.api.cn" sh gen.sh         # 自定义域名绑定（
 （源端口占用不产生 LISTEN 行）。`stubgrpc` 另内置绑定重试（3 次×2s）自愈瞬时占用。
 
 ```bash
-PORT_BASE=<base> ./stub-ctl.sh start    # 段 = <base>..<base+29>
+PORT_BASE=<base> ./stub-ctl.sh start    # 段 = <base>..<base+32>
 # 选择原则：cat /proc/sys/net/ipv4/ip_local_port_range，选范围之外的段
 ```
 

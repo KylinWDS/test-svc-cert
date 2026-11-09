@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package grpcmtls.none;
+
+option go_package = "sa-gw-stub/pb";
+
+import "stub.proto";
+
+// grpcmtls.none.Stub: grpcmtls 传输 + 免认证透传 变体（不校验业务凭据；网关路由前缀 /grpcmtls.none.Stub/ → 对应上游）。
+service Stub {
+  rpc Echo(stub.EchoRequest) returns (stub.EchoResponse);
+}

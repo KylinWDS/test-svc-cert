@@ -1,7 +1,8 @@
-// stubgrpc: 演示网关 30 端口测试桩的 gRPC 侧（15 listeners）。
+// stubgrpc: 演示网关 30 端口测试桩的 gRPC 侧（18 listeners）。
 //
 // 传输 {grpc 明文 / grpcs 单向TLS / grpcmtls 双向mTLS} × 认证 {basic/bearer/jwt/apikey/custom}
-// = 15 个独立监听（40066–40080）。与 origin-test（HTTP 侧 15 端口 40051–40065）语义对齐：
+// = 15 个独立监听（段内 +15..+29）；另有 3 个免认证透传变体 none（段内 +30..+32）。
+// 与 origin-test（HTTP 侧 15 端口 40051–40065）语义对齐：
 //
 //   - 认证凭据从 gRPC metadata 读取（HTTP/2 头小写）：
 //     basic   → authorization: Basic base64(user:pass)
@@ -10,6 +11,7 @@
 //     apikey  → x-api-key: myapikey
 //     custom  → x-edge-auth: edge1
 //   - 认证失败 → codes.Unauthenticated，message 与 HTTP 版一致
+//   - none 变体（{grpc,grpcs,grpcmtls}.none.Stub）跳过业务认证 —— 凭据透传场景/纯传输验证
 //   - mTLS listener 强制校验网关客户端证书（ClientCAs = demo CA），回显证书 Subject
 //   - 回显字段与 protos/stub.proto EchoResponse 对齐（auth_passed/host/scheme/client_dn/fwd_*）
 //
@@ -182,6 +184,12 @@ func buildAuths() map[string]*authSpec {
 			}
 			return nil
 		}},
+		// none: 免认证透传 —— 不校验任何业务凭据（auth_passed 回显 none(transparent)）。
+		// 用途：纯协议/传输验证（网关 h1↔h2 互转、TLS 终止、mTLS 证书链）无需携带凭据；
+		// grpcmtls.none 仍执行传输层 mTLS 客户端证书校验并回显 Subject。
+		"none": {name: "none(transparent)", check: func(md metadata.MD) error {
+			return nil
+		}},
 	}
 }
 
@@ -220,44 +228,50 @@ func main() {
 		log.Fatalf("[stubgrpc] invalid GRPC_PORT_BASE: %v", err)
 	}
 	transports := buildTransports(getenv("CERT_DIR", "/certs"), grpcBase)
-	errc := make(chan error, len(transports)*len(authKeys))
-	for _, t := range transports {
+	errc := make(chan error, len(transports)*(len(authKeys)+1))
+	// serveVariant: 单个监听变体（服务名 = <pkg>.<authKey>.Stub，Echo → echo(spec)）。
+	serveVariant := func(inst transport, authKey string, spec *authSpec, tlsCfg *tls.Config, suffix string) {
+		go func() {
+			lis, err := listenWithRetry(":"+inst.port, 3)
+			if err != nil {
+				errc <- err
+				return
+			}
+			serviceName := inst.pkg + "." + authKey + ".Stub"
+			opts := []grpc.ServerOption{grpc.ForceServerCodec(stubCodec{})}
+			if tlsCfg != nil {
+				opts = append(opts, grpc.Creds(credentials.NewTLS(tlsCfg)))
+			}
+			s := grpc.NewServer(opts...)
+			s.RegisterService(&grpc.ServiceDesc{
+				ServiceName: serviceName,
+				Methods: []grpc.MethodDesc{{
+					MethodName: "Echo",
+					Handler:    echoMethod(inst, spec),
+				}},
+				Streams:  []grpc.StreamDesc{},
+				Metadata: "stub.proto",
+			}, nil) // impl 传 nil：跳过 HandlerType 反射检查；业务逻辑全在 MethodDesc.Handler
+			log.Printf("[stubgrpc] %-9s %-6s listening :%s (%s/Echo%s)", inst.pkg, authKey, inst.port, serviceName, suffix)
+			errc <- s.Serve(lis)
+		}()
+	}
+	for i, t := range transports {
 		tlsCfg, err := transportTLS(t)
 		if err != nil {
 			log.Fatalf("[stubgrpc] %s: %v", t.pkg, err)
 		}
-		for i, authKey := range authKeys {
-			t, authKey := t, authKey
-			inst := t // 每变体独立实例：端口按认证索引递增（40066-40070/40071-40075/40076-40080）
-			inst.port = fmt.Sprintf("%d", t.basePort+i)
-			spec := auths[authKey]
-			go func() {
-				lis, err := listenWithRetry(":"+inst.port, 3)
-				if err != nil {
-					errc <- err
-					return
-				}
-				serviceName := inst.pkg + "." + authKey + ".Stub"
-				opts := []grpc.ServerOption{grpc.ForceServerCodec(stubCodec{})}
-				if tlsCfg != nil {
-					opts = append(opts, grpc.Creds(credentials.NewTLS(tlsCfg)))
-				}
-				s := grpc.NewServer(opts...)
-				s.RegisterService(&grpc.ServiceDesc{
-					ServiceName: serviceName,
-					Methods: []grpc.MethodDesc{{
-						MethodName: "Echo",
-						Handler:    echoMethod(inst, spec),
-					}},
-					Streams:  []grpc.StreamDesc{},
-					Metadata: "stub.proto",
-				}, nil) // impl 传 nil：跳过 HandlerType 反射检查；业务逻辑全在 MethodDesc.Handler
-				log.Printf("[stubgrpc] %-9s %-6s listening :%s (%s/Echo)", inst.pkg, authKey, inst.port, serviceName)
-				errc <- s.Serve(lis)
-			}()
+		for j, authKey := range authKeys {
+			inst := t // 每变体独立实例：端口按认证索引递增（段内 +15..+19 / +20..+24 / +25..+29）
+			inst.port = fmt.Sprintf("%d", t.basePort+j)
+			serveVariant(inst, authKey, auths[authKey], tlsCfg, "")
 		}
+		// 免认证透传变体（none）：端口 = 段内 +30..+32（grpcBase+15..+17）——不破坏既有 30 端口矩阵。
+		inst := t
+		inst.port = fmt.Sprintf("%d", grpcBase+15+i)
+		serveVariant(inst, "none", auths["none"], tlsCfg, ", auth-free")
 	}
-	// 15 个 goroutine，任一失败立即退出；全部正常则阻塞等待
+	// 18 个 goroutine，任一失败立即退出；全部正常则阻塞等待
 	for i := 0; i < cap(errc); i++ {
 		if err := <-errc; err != nil {
 			log.Fatalf("[stubgrpc] exit: %v", err)

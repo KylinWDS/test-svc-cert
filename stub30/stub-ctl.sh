@@ -129,6 +129,7 @@ cmd_info() {
   echo "== port matrix (base $PORT_BASE) =="
   echo "  http  $PORT_BASE..$((PORT_BASE+4))    | tls  $((PORT_BASE+5))..$((PORT_BASE+9))    | mtls  $((PORT_BASE+10))..$((PORT_BASE+14))"
   echo "  grpc  $((PORT_BASE+15))..$((PORT_BASE+19)) | grpcs $((PORT_BASE+20))..$((PORT_BASE+24)) | grpcmtls $((PORT_BASE+25))..$((PORT_BASE+29))"
+  echo "  none (auth-free): grpc $((PORT_BASE+30)) | grpcs $((PORT_BASE+31)) | grpcmtls $((PORT_BASE+32))"
   echo "== credentials =="
   echo "  basic=svcuser/svcpass  bearer=mytoken  jwt=HS256 mysecret"
   echo "  apikey=X-Api-Key:myapikey  custom=X-Edge-Auth:edge1"
@@ -195,9 +196,9 @@ cmd_verify() {
   fi
   # gRPC family: process liveness (stubgrpc binds all 15 ports; real calls need grpcurl)
   if pgrep -f "$BIN_DIR/stubgrpc" >/dev/null 2>&1; then
-    echo "  grpc family  $((PORT_BASE+15))-$((PORT_BASE+29))  process -> UP (grpcurl calls: see README)"
+    echo "  grpc family  $((PORT_BASE+15))-$((PORT_BASE+29)) +none $((PORT_BASE+30))-$((PORT_BASE+32))  process -> UP (grpcurl calls: see README)"
   else
-    echo "  grpc family  $((PORT_BASE+15))-$((PORT_BASE+29))  process -> DOWN"
+    echo "  grpc family  $((PORT_BASE+15))-$((PORT_BASE+29)) +none $((PORT_BASE+30))-$((PORT_BASE+32))  process -> DOWN"
     fail=$((fail + 1))
   fi
   if [ "$fail" = 0 ]; then
