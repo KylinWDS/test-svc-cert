@@ -3,6 +3,8 @@ certs/*
 !certs/gen.sh
 *.key
 stub30/dist/
+stub30/stubgrpc
+stub30/origin
 demo/stub/dist/
 stub30/certs/generated/
 gateway-config/bootstrap.raw.json
