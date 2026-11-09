@@ -60,6 +60,10 @@ cmd_start() {
   sleep 3
   cmd_status
   echo "[ctl] started (main pid $(cat "$PIDFILE"), logs in $LOG_DIR/)"
+  if ! pgrep -f "$BIN_DIR/stubgrpc" >/dev/null 2>&1; then
+    echo "[ctl] WARNING: stubgrpc is NOT running - last log lines ($LOG_DIR/stubgrpc.log):"
+    tail -5 "$LOG_DIR/stubgrpc.log" 2>/dev/null || echo "(no stubgrpc.log found)"
+  fi
 }
 
 cmd_stop() {
