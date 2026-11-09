@@ -91,6 +91,7 @@ cmd_status() {
 
 cmd_info() {
   echo "== stub deployment info =="
+  [ -f "$SELF_DIR/VERSION" ] && sed 's/^/  /' "$SELF_DIR/VERSION"
   echo "  binary dir   : $BIN_DIR"
   echo "  origin       : $(ls -l "$BIN_DIR/origin" 2>/dev/null | awk '{print $5" bytes"}')"
   echo "  stubgrpc     : $(ls -l "$BIN_DIR/stubgrpc" 2>/dev/null | awk '{print $5" bytes"}')"

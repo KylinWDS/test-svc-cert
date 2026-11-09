@@ -80,6 +80,18 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 UNIT
+  # VERSION：版本溯源（git commit / 构建时间 / 关键产物 md5）
+  {
+    echo "build: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+    echo "source: test-svc-cert stub30 (branch feature/stub-30)"
+    echo "commit: $(git -C "$(pwd)" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    echo "arch:   linux/$arch"
+    echo "bin md5:"
+    (cd "$PKG" && md5 -r bin/origin bin/stubgrpc 2>/dev/null || md5sum bin/origin bin/stubgrpc)
+    echo "certs CA fp: $(openssl x509 -in "$PKG/certs/certificates/demo-upstream-ca/1/ca.pem" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2-)"
+    echo "stub-ctl md5: $(cd "$PKG" && md5 -r stub-ctl.sh 2>/dev/null || md5sum stub-ctl.sh)"
+  } > "$PKG/VERSION"
+
   cat > "$PKG/INSTALL.txt" <<INST
 sa-gateway 30-port test stub -- Debian bare-metal deploy (no Docker / no openssl / binaries only)
 =============================================================================
