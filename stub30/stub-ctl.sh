@@ -26,6 +26,9 @@ if [ -z "${LOG_DIR:-}" ]; then
   if [ -w "$SELF_DIR" ] || [ "$(id -u)" = 0 ]; then LOG_DIR="$SELF_DIR/logs"; else LOG_DIR="/var/log/sa-gw-stub-30"; fi
 fi
 ALLOW_HOST="${ALLOW_HOST:-svc.example.com}"
+# PORT_BASE: port-segment base (default 40051; segment = base..base+29).
+# Shift to avoid collision with ephemeral outbound source ports (bind: address already in use).
+PORT_BASE="${PORT_BASE:-40051}"
 PIDFILE="$LOG_DIR/stub-30.pid"
 AUTH_KEYS="basic bearer jwt apikey custom"
 
@@ -91,7 +94,7 @@ cmd_status() {
   idx=0
   fail=0
   for auth in $AUTH_KEYS; do
-    p=$((40051 + idx))
+    p=$((PORT_BASE + idx))
     code=$(http_probe "http://127.0.0.1:$p/healthz")
     if [ "$code" = 200 ]; then st=UP; else st="DOWN($code)"; fail=$((fail + 1)); fi
     echo "  http-$auth    $p  /healthz -> $st"
@@ -123,9 +126,9 @@ cmd_info() {
   echo "  gateway CA   : $CERT_DIR/certificates/demo-upstream-ca/1/ca.pem"
   echo "  gw client cert: $CERT_DIR/certificates/demo-gw-client-cert/1/chain.pem"
   echo "  log dir      : $LOG_DIR"
-  echo "== port matrix (5 auth variants per family) =="
-  echo "  http  40051-40055  | tls  40056-40060  | mtls  40061-40065"
-  echo "  grpc  40066-40070  | grpcs 40071-40075 | grpcmtls 40076-40080"
+  echo "== port matrix (base $PORT_BASE) =="
+  echo "  http  $PORT_BASE..$((PORT_BASE+4))    | tls  $((PORT_BASE+5))..$((PORT_BASE+9))    | mtls  $((PORT_BASE+10))..$((PORT_BASE+14))"
+  echo "  grpc  $((PORT_BASE+15))..$((PORT_BASE+19)) | grpcs $((PORT_BASE+20))..$((PORT_BASE+24)) | grpcmtls $((PORT_BASE+25))..$((PORT_BASE+29))"
   echo "== credentials =="
   echo "  basic=svcuser/svcpass  bearer=mytoken  jwt=HS256 mysecret"
   echo "  apikey=X-Api-Key:myapikey  custom=X-Edge-Auth:edge1"
@@ -170,7 +173,7 @@ cmd_verify() {
   idx=0
   # HTTP family /healthz (auth-free) must answer 200
   for auth in $AUTH_KEYS; do
-    p=$((40051 + idx))
+    p=$((PORT_BASE + idx))
     code=$(http_probe "http://127.0.0.1:$p/healthz")
     if [ "$code" = 200 ]; then st=UP; else st="DOWN($code)"; fail=$((fail + 1)); fi
     echo "  http-$auth    $p  /healthz -> $st"
@@ -181,20 +184,20 @@ cmd_verify() {
   # busybox wget (alpine) cannot send Host/Authorization -> these checks are skipped.
   if command -v curl >/dev/null 2>&1 || wget --help 2>&1 | grep -q -- '--header'; then
     host_hdr=$(echo "$ALLOW_HOST" | cut -d, -f1)
-    body=$(curl -s -m 3 -u svcuser:svcpass -H "Host: $host_hdr" http://127.0.0.1:40051/json 2>/dev/null || wget -qO- -T 3 --header "Host: $host_hdr" --header 'Authorization: Basic c3ZjdXNlcjpzdmNwYXNz' http://127.0.0.1:40051/json 2>/dev/null)
+    body=$(curl -s -m 3 -u svcuser:svcpass -H "Host: $host_hdr" "http://127.0.0.1:$PORT_BASE/json" 2>/dev/null || wget -qO- -T 3 --header "Host: $host_hdr" --header 'Authorization: Basic c3ZjdXNlcjpzdmNwYXNz' "http://127.0.0.1:$PORT_BASE/json" 2>/dev/null)
     case "$body" in *order-alpha*) echo "  /json  40051  real-value -> UP";; *) echo "  /json  40051  real-value -> DOWN"; fail=$((fail + 1));; esac
-    body=$(curl -s -m 3 -u svcuser:svcpass -H "Host: $host_hdr" http://127.0.0.1:40051/echo/ctl-selfcheck 2>/dev/null || wget -qO- -T 3 --header "Host: $host_hdr" --header 'Authorization: Basic c3ZjdXNlcjpzdmNwYXNz' http://127.0.0.1:40051/echo/ctl-selfcheck 2>/dev/null)
+    body=$(curl -s -m 3 -u svcuser:svcpass -H "Host: $host_hdr" "http://127.0.0.1:$PORT_BASE/echo/ctl-selfcheck" 2>/dev/null || wget -qO- -T 3 --header "Host: $host_hdr" --header 'Authorization: Basic c3ZjdXNlcjpzdmNwYXNz' "http://127.0.0.1:$PORT_BASE/echo/ctl-selfcheck" 2>/dev/null)
     case "$body" in *ctl-selfcheck*) echo "  /echo  40051  echo -> UP";; *) echo "  /echo  40051  echo -> DOWN"; fail=$((fail + 1));; esac
-    body=$(curl -s -m 3 -u svcuser:svcpass -H "Host: $host_hdr" http://127.0.0.1:40051/file 2>/dev/null || wget -qO- -T 3 --header "Host: $host_hdr" --header 'Authorization: Basic c3ZjdXNlcjpzdmNwYXNz' http://127.0.0.1:40051/file 2>/dev/null)
+    body=$(curl -s -m 3 -u svcuser:svcpass -H "Host: $host_hdr" "http://127.0.0.1:$PORT_BASE/file" 2>/dev/null || wget -qO- -T 3 --header "Host: $host_hdr" --header 'Authorization: Basic c3ZjdXNlcjpzdmNwYXNz' "http://127.0.0.1:$PORT_BASE/file" 2>/dev/null)
     case "$body" in *order-alpha*) echo "  /file  40051  csv -> UP";; *) echo "  /file  40051  csv -> DOWN"; fail=$((fail + 1));; esac
   else
     echo "  business endpoints: SKIP (client cannot send custom headers; use curl or GNU wget)"
   fi
   # gRPC family: process liveness (stubgrpc binds all 15 ports; real calls need grpcurl)
   if pgrep -f "$BIN_DIR/stubgrpc" >/dev/null 2>&1; then
-    echo "  grpc family  40066-40080  process -> UP (grpcurl calls: see README)"
+    echo "  grpc family  $((PORT_BASE+15))-$((PORT_BASE+29))  process -> UP (grpcurl calls: see README)"
   else
-    echo "  grpc family  40066-40080  process -> DOWN"
+    echo "  grpc family  $((PORT_BASE+15))-$((PORT_BASE+29))  process -> DOWN"
     fail=$((fail + 1))
   fi
   if [ "$fail" = 0 ]; then

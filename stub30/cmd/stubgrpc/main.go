@@ -33,6 +33,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -195,15 +196,16 @@ type transport struct {
 	scheme   string
 }
 
-// buildTransports: 按 CERT_DIR 物化 TLS 路径（容器默认 /certs，裸机部署通过环境变量指向包内 certs/）。
-func buildTransports(certDir string) []transport {
+// buildTransports: 按 CERT_DIR 物化 TLS 路径、按 GRPC_PORT_BASE 物化端口基址
+// （容器默认 /certs + 40066；裸机部署通过环境变量指向包内 certs/ 与平移后的端口段）。
+func buildTransports(certDir string, grpcBase int) []transport {
 	serverCert := certDir + "/upstream/server.chain.crt"
 	serverKey := certDir + "/upstream/server.key"
 	clientCA := certDir + "/certificates/demo-upstream-ca/1/ca.pem"
 	return []transport{
-		{pkg: "grpc", basePort: 40066, scheme: "grpc"},
-		{pkg: "grpcs", basePort: 40071, scheme: "grpcs", cert: serverCert, key: serverKey},
-		{pkg: "grpcmtls", basePort: 40076, scheme: "grpcs", cert: serverCert, key: serverKey, clientCA: clientCA},
+		{pkg: "grpc", basePort: grpcBase, scheme: "grpc"},
+		{pkg: "grpcs", basePort: grpcBase + 5, scheme: "grpcs", cert: serverCert, key: serverKey},
+		{pkg: "grpcmtls", basePort: grpcBase + 10, scheme: "grpcs", cert: serverCert, key: serverKey, clientCA: clientCA},
 	}
 }
 
@@ -212,7 +214,12 @@ var authKeys = []string{"basic", "bearer", "jwt", "apikey", "custom"}
 
 func main() {
 	auths := buildAuths()
-	transports := buildTransports(getenv("CERT_DIR", "/certs"))
+	// GRPC_PORT_BASE: gRPC 家族端口基址（默认 40066；与 stub-30.sh 的 PORT_BASE+15 对应）
+	grpcBase, err := strconv.Atoi(getenv("GRPC_PORT_BASE", "40066"))
+	if err != nil || grpcBase < 1024 {
+		log.Fatalf("[stubgrpc] invalid GRPC_PORT_BASE: %v", err)
+	}
+	transports := buildTransports(getenv("CERT_DIR", "/certs"), grpcBase)
 	errc := make(chan error, len(transports)*len(authKeys))
 	for _, t := range transports {
 		tlsCfg, err := transportTLS(t)

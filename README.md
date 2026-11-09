@@ -185,6 +185,17 @@ cd stub30/certs && sh gen.sh        # 输出到 certs/generated/（gitignore，�
 | `demo-gw-client-cert/1/` | mTLS 回源时网关出示的客户端证书 |
 | `upstream/server.chain.crt + key` | 测试桩服务端证书（SAN 含 demo-upstream/demo-stub/svc.example.com） |
 
+**端口段偏移**（默认 40051-40080 与 ephemeral 出站源端口冲突时的自救）：
+
+```bash
+# 目标机启动时整段平移 30 个端口（PORT_BASE..PORT_BASE+29），无需 root 改内核参数
+PORT_BASE=41051 ./stub-ctl.sh start        # 端口段变为 41051-41080
+./stub-ctl.sh verify                       # status/info/verify 自动跟随新端口段
+```
+> 背景：Linux 默认 ephemeral 出站源端口范围 32768-60999 与 40051-40080 重叠——服务器上
+> 出站连接源端口恰好占用桩端口时 listen 报 `address already in use`（且 ss 平时看不到
+> 监听）。PORT_BASE 平移即可避开；桩grpc 内置绑定重试（3 次×2s）自愈瞬时占用。
+
 **自定义域名绑定**（重新生成并指定绑定）：
 
 ```bash
