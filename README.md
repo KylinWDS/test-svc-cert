@@ -17,6 +17,10 @@
 
 > 网关侧（Envoy）由 sa-gateway 项目与节点 pilot 负责；本仓库只交付测试桩与网关配置
 > 样例，不承载网关运行时。
+>
+> **另**：sa-gateway 项目侧的本机演示环境（docker-compose + 演示上游 + verify-30.sh
+> 155 断言网关互转验证）已归档至本仓库 `docs/demo-environment-legacy.tar.gz`
+> （解包后 `docker compose up -d --build` 可在装有 Docker 的机器复现演示）。
 
 ---
 
