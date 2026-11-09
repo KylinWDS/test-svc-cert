@@ -148,7 +148,7 @@ cmd_health() {
   fi
   idx=0
   for auth in $AUTH_KEYS; do
-    p=$((40051 + idx))
+    p=$((PORT_BASE + idx))
     code=$(http_probe "http://127.0.0.1:$p/healthz")
     if [ "$code" != 200 ]; then
       echo "HEALTH: FAIL (http-$auth :$p /healthz -> $code)"
@@ -185,11 +185,11 @@ cmd_verify() {
   if command -v curl >/dev/null 2>&1 || wget --help 2>&1 | grep -q -- '--header'; then
     host_hdr=$(echo "$ALLOW_HOST" | cut -d, -f1)
     body=$(curl -s -m 3 -u svcuser:svcpass -H "Host: $host_hdr" "http://127.0.0.1:$PORT_BASE/json" 2>/dev/null || wget -qO- -T 3 --header "Host: $host_hdr" --header 'Authorization: Basic c3ZjdXNlcjpzdmNwYXNz' "http://127.0.0.1:$PORT_BASE/json" 2>/dev/null)
-    case "$body" in *order-alpha*) echo "  /json  40051  real-value -> UP";; *) echo "  /json  40051  real-value -> DOWN"; fail=$((fail + 1));; esac
+    case "$body" in *order-alpha*) echo "  /json  $PORT_BASE  real-value -> UP";; *) echo "  /json  $PORT_BASE  real-value -> DOWN"; fail=$((fail + 1));; esac
     body=$(curl -s -m 3 -u svcuser:svcpass -H "Host: $host_hdr" "http://127.0.0.1:$PORT_BASE/echo/ctl-selfcheck" 2>/dev/null || wget -qO- -T 3 --header "Host: $host_hdr" --header 'Authorization: Basic c3ZjdXNlcjpzdmNwYXNz' "http://127.0.0.1:$PORT_BASE/echo/ctl-selfcheck" 2>/dev/null)
-    case "$body" in *ctl-selfcheck*) echo "  /echo  40051  echo -> UP";; *) echo "  /echo  40051  echo -> DOWN"; fail=$((fail + 1));; esac
+    case "$body" in *ctl-selfcheck*) echo "  /echo  $PORT_BASE  echo -> UP";; *) echo "  /echo  $PORT_BASE  echo -> DOWN"; fail=$((fail + 1));; esac
     body=$(curl -s -m 3 -u svcuser:svcpass -H "Host: $host_hdr" "http://127.0.0.1:$PORT_BASE/file" 2>/dev/null || wget -qO- -T 3 --header "Host: $host_hdr" --header 'Authorization: Basic c3ZjdXNlcjpzdmNwYXNz' "http://127.0.0.1:$PORT_BASE/file" 2>/dev/null)
-    case "$body" in *order-alpha*) echo "  /file  40051  csv -> UP";; *) echo "  /file  40051  csv -> DOWN"; fail=$((fail + 1));; esac
+    case "$body" in *order-alpha*) echo "  /file  $PORT_BASE  csv -> UP";; *) echo "  /file  $PORT_BASE  csv -> DOWN"; fail=$((fail + 1));; esac
   else
     echo "  business endpoints: SKIP (client cannot send custom headers; use curl or GNU wget)"
   fi

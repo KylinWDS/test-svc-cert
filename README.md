@@ -189,12 +189,16 @@ cd stub30/certs && sh gen.sh        # 输出到 certs/generated/（gitignore，�
 
 ```bash
 # 目标机启动时整段平移 30 个端口（PORT_BASE..PORT_BASE+29），无需 root 改内核参数
-PORT_BASE=41051 ./stub-ctl.sh start        # 端口段变为 41051-41080
-./stub-ctl.sh verify                       # status/info/verify 自动跟随新端口段
+# 先查系统临时端口范围（出站连接源端口从中分配）：
+cat /proc/sys/net/ipv4/ip_local_port_range   # 例如 32768 60999
+# 选一个完全在范围之外的段（默认范围 32768-60999 时用 62051；范围被改宽则相应调整）：
+PORT_BASE=62051 ./stub-ctl.sh start          # 端口段变为 62051-62080
+./stub-ctl.sh verify                         # status/info/verify 自动跟随新端口段
 ```
 > 背景：Linux 默认 ephemeral 出站源端口范围 32768-60999 与 40051-40080 重叠——服务器上
-> 出站连接源端口恰好占用桩端口时 listen 报 `address already in use`（且 ss 平时看不到
-> 监听）。PORT_BASE 平移即可避开；桩grpc 内置绑定重试（3 次×2s）自愈瞬时占用。
+> 出站连接的**源端口**恰好占用桩端口时 listen 报 `address already in use`，且
+> `ss -ltn | grep :40066` 平时看不到（源端口占用不产生 LISTEN 行）。PORT_BASE 平移到
+> 范围之外（如 62051）即可避开；桩 grpc 内置绑定重试（3 次×2s）自愈瞬时占用。
 
 **自定义域名绑定**（重新生成并指定绑定）：
 
