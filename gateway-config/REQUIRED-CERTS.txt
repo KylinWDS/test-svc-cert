@@ -1,0 +1,7 @@
+编译契约要求的证书文件（demo/certs/gen.sh 自动物化到 demo-certs 卷）:
+  certificates/demo-gw-cert/1/chain.pem      入口 HTTPS listener 证书链
+  certificates/demo-gw-cert/1/key.pem        入口 HTTPS listener 私钥
+  certificates/demo-upstream-ca/1/ca.pem     加密/双向回源信任 CA
+  certificates/demo-gw-client-cert/1/chain.pem  mTLS 回源网关客户端证书链
+  certificates/demo-gw-client-cert/1/key.pem    mTLS 回源网关客户端私钥
+运行时占位符替换值: {{PILOT_RELEASE_DIR}} = /etc/envoy/release

@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package grpcs.custom;
+
+option go_package = "sa-gw-stub/pb";
+
+import "stub.proto";
+
+// grpcs.custom.Stub: grpcs 传输 + custom 认证 变体（网关路由前缀 /grpcs.custom.Stub/ → 对应上游）。
+service Stub {
+  rpc Echo(stub.EchoRequest) returns (stub.EchoResponse);
+}
